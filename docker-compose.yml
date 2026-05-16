@@ -1,0 +1,49 @@
+services:
+  # Einmalig ausführen (z.B. manuell anstoßen)
+  agent:
+    build: .
+    env_file: .env
+    environment:
+      VAULT_PATH: /vault
+      DB_PATH: /data/obsidian_agent.db
+    volumes:
+      - ${HOST_VAULT_PATH}:/vault:rw
+      - obsidian_data:/data
+      - obsidian_chroma:/app/chroma_store
+    command: python agent.py
+
+  # Dauerbetrieb: indiziert automatisch alle WATCH_INTERVAL_MINUTES Minuten
+  watcher:
+    build: .
+    env_file: .env
+    environment:
+      VAULT_PATH: /vault
+      DB_PATH: /data/obsidian_agent.db
+      WATCH_INTERVAL_MINUTES: ${WATCH_INTERVAL_MINUTES:-30}
+    volumes:
+      - ${HOST_VAULT_PATH}:/vault:rw
+      - obsidian_data:/data
+      - obsidian_chroma:/app/chroma_store
+    restart: unless-stopped
+    command: python watcher.py
+
+  # Vault interaktiv abfragen
+  query:
+    build: .
+    env_file: .env
+    environment:
+      VAULT_PATH: /vault
+      DB_PATH: /data/obsidian_agent.db
+    volumes:
+      - ${HOST_VAULT_PATH}:/vault:rw
+      - obsidian_data:/data
+      - obsidian_chroma:/app/chroma_store
+    profiles:
+      - query
+    stdin_open: true
+    tty: true
+    command: python query.py
+
+volumes:
+  obsidian_data:
+  obsidian_chroma:

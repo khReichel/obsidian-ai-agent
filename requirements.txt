@@ -1,0 +1,8 @@
+groq
+pyyaml
+chromadb
+python-dotenv
+sentence-transformers
+google-generativeai
+anthropic
+openai
