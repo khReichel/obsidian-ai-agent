@@ -1,162 +1,161 @@
-# Obsidian Automation Agent
+# Obsidian AI Agent
 
-Analysiert und verschlagwortet Obsidian-Notizen automatisch per KI, erstellt semantische Embeddings und beantwortet Fragen über den gesamten Vault (RAG). Embeddings laufen vollständig lokal — nur der LLM-Aufruf geht nach außen.
+Automatically analyzes and tags Obsidian notes using AI, creates semantic embeddings, and answers questions about your entire vault (RAG). Embeddings run fully locally — only LLM calls go to an external API.
 
 ---
 
-## Architektur
+## Architecture
 
 ```mermaid
 flowchart TD
-    V["📁 Obsidian Vault\n(.md Dateien)"]
-    WCH["⏱️ watcher.py\nalle 30 min"]
+    V["📁 Obsidian Vault\n(.md files)"]
+    WCH["⏱️ watcher.py\nevery 30 min"]
 
     subgraph agent["agent.py — Orchestrator"]
-        S["Vault Scanner\nSHA256-Hashing"]
+        S["Vault Scanner\nSHA256 Hashing"]
         W["Job Worker"]
     end
 
     subgraph services["Services"]
         LLM["☁️ LLM API\n(Groq / Gemini / Anthropic / OpenRouter)\nSummary · Tags · Keywords"]
-        EMB["🖥️ sentence-transformers\n(lokal, offline)\nEmbeddings"]
+        EMB["🖥️ sentence-transformers\n(local, offline)\nEmbeddings"]
     end
 
-    subgraph storage["Persistenz"]
+    subgraph storage["Persistence"]
         DB[("SQLite\nnotes + jobs")]
         CHROMA[("ChromaDB\nchroma_store/")]
     end
 
     Q["query.py\nRAG CLI"]
-    ANS["💬 Antwort\nim Terminal"]
+    ANS["💬 Answer\nin terminal"]
 
-    WCH -->|"startet automatisch"| agent
-    V -->|"neu / geändert"| S
-    S -->|"Job eintragen"| DB
+    WCH -->|"triggers automatically"| agent
+    V -->|"new / changed"| S
+    S -->|"enqueue job"| DB
     DB -->|"pending jobs"| W
     W -->|"full_index"| LLM
-    LLM -->|"Frontmatter\nzurückschreiben"| V
+    LLM -->|"write frontmatter\nback to vault"| V
     W -->|"embedding"| EMB
-    EMB -->|"Vektoren speichern"| CHROMA
-    CHROMA -->|"semantische Suche"| Q
-    Q -->|"Kontext + Frage"| LLM
+    EMB -->|"store vectors"| CHROMA
+    CHROMA -->|"semantic search"| Q
+    Q -->|"context + question"| LLM
     LLM --> ANS
 ```
 
 ---
 
-## Schnellstart mit Docker (empfohlen)
+## Quick Start with Docker (recommended)
 
-### 1. Repository klonen
+### 1. Clone the repository
 
 ```bash
 git clone <repo-url>
 cd obsidianAutomation
 ```
 
-### 2. `.env` anlegen
+### 2. Create `.env`
 
-Kopiere `.env.example` nach `.env` und trage deine Werte ein:
+Copy `.env.example` to `.env` and fill in your values:
 
 ```env
 LLM_PROVIDER=groq
 GROQ_API_KEY=gsk_...          # https://console.groq.com → API Keys
 
-HOST_VAULT_PATH=C:\Users\dein-name\Documents\ObsidianVault
-                               # Windows-Pfad zu deinem Vault
+HOST_VAULT_PATH=/path/to/your/ObsidianVault
 ```
 
-> `VAULT_PATH` und `DB_PATH` werden durch Docker automatisch gesetzt — diese Zeilen kannst du in der `.env` weglassen oder so lassen wie sie sind.
+> `VAULT_PATH` and `DB_PATH` are set automatically by Docker — you can omit or leave those lines as-is.
 
-### 3. Image bauen (einmalig, ~5 Minuten)
+### 3. Build the image (once, ~5 minutes)
 
 ```bash
 docker compose build
 ```
 
-Das Embedding-Modell (~400 MB) wird direkt ins Image gebacken, sodass der erste Start sofort läuft.
+The embedding model (~400 MB) is baked into the image so the first run starts immediately.
 
-### 4. Watcher starten (empfohlen)
+### 4. Start the watcher (recommended)
 
 ```bash
 docker compose up watcher -d
 ```
 
-Der Watcher läuft dauerhaft im Hintergrund und indiziert den Vault automatisch alle 30 Minuten. Neue Notizen werden erkannt, sobald du sie in Obsidian gespeichert hast — ohne dass du etwas tun musst.
+The watcher runs continuously in the background and re-indexes the vault every 30 minutes. New notes are picked up as soon as you save them in Obsidian — no manual action needed.
 
-**Intervall anpassen** — in der `.env`:
+**Adjust interval** — in `.env`:
 ```env
 WATCH_INTERVAL_MINUTES=15
 ```
 
-**Logs anzeigen:**
+**View logs:**
 ```bash
 docker compose logs watcher -f
 ```
 
-**Watcher stoppen:**
+**Stop watcher:**
 ```bash
 docker compose stop watcher
 ```
 
-> Alternativ: `docker compose up agent` für einen einmaligen Durchlauf ohne Dauerbetrieb.
+> Alternatively: `docker compose up agent` for a one-off run without continuous operation.
 
-### 5. Vault abfragen
+### 5. Query the vault
 
 ```bash
-# Einzelfrage
-docker compose run --rm query python query.py "Was sind meine wichtigsten Erkenntnisse zum Thema Produktivität?"
+# Single question
+docker compose run --rm query python query.py "What are my key insights on productivity?"
 
-# Interaktiver Modus (mehrere Fragen hintereinander)
+# Interactive mode (multiple questions)
 docker compose run --rm --profile query query
 ```
 
 ---
 
-## Installation ohne Docker (Python)
+## Installation without Docker (Python)
 
-### Voraussetzungen
+### Requirements
 
 - Python 3.11+
-- API Key für einen der unterstützten Provider
+- API key for one of the supported providers
 
-### Abhängigkeiten installieren
+### Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### `.env` anlegen
+### Create `.env`
 
 ```env
 LLM_PROVIDER=groq
 GROQ_API_KEY=gsk_...
 DEFAULT_MODEL=llama-3.1-8b-instant
-VAULT_PATH=/pfad/zu/deinem/vault
+VAULT_PATH=/path/to/your/vault
 DB_PATH=obsidian_agent.db
 ```
 
-### Starten
+### Run
 
 ```bash
-# Vault indizieren
+# Index the vault
 python agent.py
 
-# Vault abfragen
-python query.py "Deine Frage"
-python query.py              # interaktiver Modus
+# Query the vault
+python query.py "Your question"
+python query.py              # interactive mode
 ```
 
 ---
 
-## LLM-Provider
+## LLM Providers
 
-| Provider | `LLM_PROVIDER` | Empfohlenes Modell | Kosten |
+| Provider | `LLM_PROVIDER` | Recommended Model | Cost |
 |---|---|---|---|
-| **Groq** | `groq` | `llama-3.1-8b-instant` | kostenlos (30 req/min) |
-| **Groq** | `groq` | `llama-3.3-70b-versatile` | kostenlos, langsamer |
-| **Google Gemini** | `gemini` | `gemini-2.0-flash` | kostenlos (1500 req/Tag) |
-| **Anthropic** | `anthropic` | `claude-haiku-4-5` | ~€1–2/Monat |
-| **OpenRouter** | `openrouter` | `meta-llama/llama-3.1-8b-instruct` | ~$0/Monat |
+| **Groq** | `groq` | `llama-3.1-8b-instant` | free (30 req/min) |
+| **Groq** | `groq` | `llama-3.3-70b-versatile` | free, slower |
+| **Google Gemini** | `gemini` | `gemini-2.0-flash` | free (1500 req/day) |
+| **Anthropic** | `anthropic` | `claude-haiku-4-5` | ~€1–2/month |
+| **OpenRouter** | `openrouter` | `meta-llama/llama-3.1-8b-instruct` | ~$0/month |
 
 API Keys:
 - Groq: [console.groq.com](https://console.groq.com)
@@ -166,37 +165,37 @@ API Keys:
 
 ---
 
-## Was der Agent macht
+## What the agent does
 
-| Feature | Beschreibung |
+| Feature | Description |
 |---|---|
-| **Auto-Tagging** | Analysiert neue/geänderte Notizen, schreibt `ai_summary`, `ai_tags`, `ai_keywords` automatisch in den YAML-Frontmatter |
-| **Embeddings** | Zerlegt Notizen in Chunks, erstellt lokale Vektoren offline (~400 MB Modell, einmalig gecacht) |
-| **Auto-Linking** | Findet semantisch ähnliche Notizen (Cosine-Similarity ≥ 0.75), schreibt `[[Wiki-Links]]` in den Body (`## Related Notes`) und ins Frontmatter (`ai_related_notes`) — Obsidian zeigt sie automatisch im Graph |
-| **RAG-Query** | Beantwortet Fragen über den gesamten Vault via `query.py` — semantische Suche + KI-Synthese |
-| **Verarbeitungsreihenfolge** | Pro Notiz: `full_index` → Embeddings → `auto_link` — alles automatisch in einem Durchlauf |
-| **Manuelle Änderungen** | Eigene `tags:` und `[[Links]]` im Body bleiben erhalten; nur `ai_*`-Felder werden vom Agent verwaltet |
-| **Änderungserkennung** | SHA256-Hashing verhindert unnötige KI-Aufrufe bei unveränderten Notizen |
-| **Rate-Limit-Retry** | Wartet automatisch bei 429-Fehlern und wiederholt den Aufruf mit exponentiellem Backoff |
-| **Auto-Watcher** | Läuft dauerhaft im Hintergrund, indiziert neue Notizen automatisch im einstellbaren Intervall |
+| **Auto-Tagging** | Analyzes new/changed notes and writes `ai_summary`, `ai_tags`, `ai_keywords` into the YAML frontmatter automatically |
+| **Embeddings** | Splits notes into chunks and creates local vectors offline (~400 MB model, cached once) |
+| **Auto-Linking** | Finds semantically similar notes (cosine similarity ≥ 0.75), writes `[[Wiki-Links]]` into the body (`## Related Notes`) and frontmatter (`ai_related_notes`) — Obsidian displays them automatically in the graph |
+| **RAG Query** | Answers questions about the entire vault via `query.py` — semantic search + AI synthesis |
+| **Processing order** | Per note: `full_index` → embeddings → `auto_link` — all automatic in one pass |
+| **Manual changes** | Your own `tags:` and `[[Links]]` in the body are preserved; only `ai_*` fields are managed by the agent |
+| **Change detection** | SHA256 hashing prevents unnecessary AI calls for unchanged notes |
+| **Rate-limit retry** | Automatically waits on 429 errors and retries with exponential backoff |
+| **Auto-Watcher** | Runs continuously in the background, indexes new notes automatically at a configurable interval |
 
 ---
 
-## Projektstruktur
+## Project Structure
 
 ```
-agent.py                  Orchestrator: Vault-Scan + Job-Worker
-watcher.py                Dauerbetrieb: startet agent.py im konfigurierbaren Intervall
-query.py                  RAG-CLI: Vault interaktiv abfragen
-core.py                   Provider-Dispatch, DB-Verbindung, call_ai()
-config.py                 .env laden, Provider-Validierung
-utils.py                  Markdown-Parsing, SHA256-Hashing
+agent.py                  Orchestrator: vault scan + job worker
+watcher.py                Continuous operation: runs agent.py at a configurable interval
+query.py                  RAG CLI: query the vault interactively
+core.py                   Provider dispatch, DB connection, call_ai()
+config.py                 .env loading, provider validation
+utils.py                  Markdown parsing, SHA256 hashing
 services/
-  embedding_service.py    Lokale Embeddings + ChromaDB
-  rag_service.py          RAG-Pipeline, Ähnlichkeitssuche
-Dockerfile                Container-Build
-docker-compose.yml        agent / watcher / query als Services
-requirements.txt          Python-Abhängigkeiten
+  embedding_service.py    Local embeddings + ChromaDB
+  rag_service.py          RAG pipeline, similarity search
+Dockerfile                Container build
+docker-compose.yml        agent / watcher / query as services
+requirements.txt          Python dependencies
 ```
 
 ---
