@@ -47,7 +47,7 @@ def writeback_to_markdown(path: str, ai_result: dict):
     new_yaml = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False)
 
     # Datei neu zusammensetzen
-    new_content = f"---\n{new_yaml}---{body}"
+    new_content = f"---\n{new_yaml}---\n{body.lstrip(chr(10))}"
 
     # Atomar schreiben
     with open(path, "w", encoding="utf-8") as f:
